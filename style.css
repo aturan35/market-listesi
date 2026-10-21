@@ -27,6 +27,49 @@ h1 {
   text-align: center;
 }
 
+.sync-bar {
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  background: #f0f4ff;
+  border-radius: 10px;
+}
+
+.sync-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.sync-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  font-size: 0.9rem;
+}
+
+.sync-row button {
+  padding: 8px 10px;
+  font-size: 0.85rem;
+}
+
+.sync-code-label {
+  flex: 1;
+  font-size: 0.9rem;
+  color: #3a63e0;
+}
+
+.sync-status {
+  margin-top: 6px;
+  font-size: 0.78rem;
+  color: #6b7280;
+  min-height: 1em;
+}
+
+.sync-status.error {
+  color: #e24c4c;
+}
+
 .tabs {
   display: flex;
   gap: 6px;

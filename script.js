@@ -49,6 +49,7 @@ let items = loadItems(STORAGE_KEY);
 
 function saveItems() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  pushSync();
 }
 
 function render() {
@@ -150,6 +151,7 @@ let pantryItems = loadItems(PANTRY_STORAGE_KEY);
 
 function savePantryItems() {
   localStorage.setItem(PANTRY_STORAGE_KEY, JSON.stringify(pantryItems));
+  pushSync();
 }
 
 function renderPantry() {
@@ -251,3 +253,169 @@ pantryClearBtn.addEventListener("click", () => {
 });
 
 renderPantry();
+
+// --- Senkronizasyon (jsonblob.com üzerinden, hesap gerektirmez) ---
+
+const SYNC_CODE_KEY = "market-sync-code";
+const BLOB_API = "https://jsonblob.com/api/jsonBlob";
+
+const syncCodeInput = document.getElementById("sync-code-input");
+const syncJoinBtn = document.getElementById("sync-join-btn");
+const syncCreateBtn = document.getElementById("sync-create-btn");
+const syncOffEl = document.getElementById("sync-off");
+const syncOnEl = document.getElementById("sync-on");
+const syncCodeDisplay = document.getElementById("sync-code-display");
+const syncCopyBtn = document.getElementById("sync-copy-btn");
+const syncLeaveBtn = document.getElementById("sync-leave-btn");
+const syncStatusEl = document.getElementById("sync-status");
+
+let syncCode = localStorage.getItem(SYNC_CODE_KEY) || null;
+let lastRemoteUpdatedAt = 0;
+let syncPollTimer = null;
+let pushDebounceTimer = null;
+
+function setSyncStatus(text, isError) {
+  syncStatusEl.textContent = text;
+  syncStatusEl.classList.toggle("error", !!isError);
+}
+
+function updateSyncUI() {
+  if (syncCode) {
+    syncOffEl.style.display = "none";
+    syncOnEl.style.display = "flex";
+    syncCodeDisplay.textContent = syncCode;
+  } else {
+    syncOffEl.style.display = "flex";
+    syncOnEl.style.display = "none";
+  }
+}
+
+function getSyncPayload() {
+  return { items, pantryItems, updatedAt: Date.now() };
+}
+
+function applyRemoteData(data) {
+  items = Array.isArray(data.items) ? data.items : [];
+  pantryItems = Array.isArray(data.pantryItems) ? data.pantryItems : [];
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  localStorage.setItem(PANTRY_STORAGE_KEY, JSON.stringify(pantryItems));
+  render();
+  renderPantry();
+}
+
+async function createSyncCode() {
+  setSyncStatus("Kod oluşturuluyor...");
+  try {
+    const res = await fetch(BLOB_API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(getSyncPayload()),
+    });
+    const location = res.headers.get("Location");
+    if (!res.ok || !location) throw new Error("no-location");
+    syncCode = location.split("/").pop();
+    lastRemoteUpdatedAt = Date.now();
+    localStorage.setItem(SYNC_CODE_KEY, syncCode);
+    updateSyncUI();
+    setSyncStatus("Kod oluşturuldu. Bu kodu diğer telefona gir.");
+    startPolling();
+  } catch (err) {
+    setSyncStatus("Kod oluşturulamadı. Bağlantıyı kontrol edip tekrar dene.", true);
+  }
+}
+
+async function joinSyncCode(id) {
+  if (!id) return;
+  setSyncStatus("Katılınıyor...");
+  try {
+    const res = await fetch(`${BLOB_API}/${id}`);
+    if (!res.ok) throw new Error("not-found");
+    const data = await res.json();
+    applyRemoteData(data);
+    lastRemoteUpdatedAt = data.updatedAt || Date.now();
+    syncCode = id;
+    localStorage.setItem(SYNC_CODE_KEY, syncCode);
+    updateSyncUI();
+    setSyncStatus("Katılındı, senkronize ediliyor.");
+    startPolling();
+  } catch (err) {
+    setSyncStatus("Bu kod bulunamadı. Kodu kontrol et.", true);
+  }
+}
+
+function leaveSyncCode() {
+  syncCode = null;
+  localStorage.removeItem(SYNC_CODE_KEY);
+  stopPolling();
+  updateSyncUI();
+  setSyncStatus("Senkronizasyondan ayrıldın.");
+}
+
+function pushSync() {
+  if (!syncCode) return;
+  clearTimeout(pushDebounceTimer);
+  pushDebounceTimer = setTimeout(async () => {
+    try {
+      const payload = getSyncPayload();
+      const res = await fetch(`${BLOB_API}/${syncCode}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error("push-failed");
+      lastRemoteUpdatedAt = payload.updatedAt;
+      setSyncStatus(`Senkronize edildi (${new Date(payload.updatedAt).toLocaleTimeString("tr-TR")})`);
+    } catch (err) {
+      setSyncStatus("Senkron hatası, bağlantı yok.", true);
+    }
+  }, 400);
+}
+
+async function pullSync() {
+  if (!syncCode) return;
+  try {
+    const res = await fetch(`${BLOB_API}/${syncCode}`);
+    if (!res.ok) throw new Error("pull-failed");
+    const data = await res.json();
+    if (data.updatedAt && data.updatedAt > lastRemoteUpdatedAt) {
+      applyRemoteData(data);
+      lastRemoteUpdatedAt = data.updatedAt;
+      setSyncStatus(`Güncellendi (${new Date(data.updatedAt).toLocaleTimeString("tr-TR")})`);
+    }
+  } catch (err) {
+    setSyncStatus("Senkron hatası, bağlantı yok.", true);
+  }
+}
+
+function startPolling() {
+  stopPolling();
+  syncPollTimer = setInterval(pullSync, 6000);
+}
+
+function stopPolling() {
+  if (syncPollTimer) clearInterval(syncPollTimer);
+  syncPollTimer = null;
+}
+
+syncCreateBtn.addEventListener("click", createSyncCode);
+
+syncJoinBtn.addEventListener("click", () => {
+  const id = syncCodeInput.value.trim();
+  joinSyncCode(id);
+});
+
+syncCopyBtn.addEventListener("click", () => {
+  navigator.clipboard?.writeText(syncCode).then(() => setSyncStatus("Kod kopyalandı."));
+});
+
+syncLeaveBtn.addEventListener("click", () => {
+  if (confirm("Senkronizasyondan ayrılmak istiyor musun? (Veriler bu cihazda kalır.)")) {
+    leaveSyncCode();
+  }
+});
+
+updateSyncUI();
+if (syncCode) {
+  setSyncStatus("Senkronize ediliyor...");
+  startPolling();
+}

@@ -10,6 +10,20 @@
   <div class="app">
     <h1>🛒 Market Listesi</h1>
 
+    <div id="sync-bar" class="sync-bar">
+      <div id="sync-off" class="sync-row">
+        <input type="text" id="sync-code-input" placeholder="Liste kodu gir" autocomplete="off" maxlength="24">
+        <button id="sync-join-btn" type="button">Katıl</button>
+        <button id="sync-create-btn" type="button">Yeni Kod</button>
+      </div>
+      <div id="sync-on" class="sync-row" style="display: none;">
+        <span class="sync-code-label">Kod: <strong id="sync-code-display"></strong></span>
+        <button id="sync-copy-btn" type="button">Kopyala</button>
+        <button id="sync-leave-btn" type="button">Ayrıl</button>
+      </div>
+      <div id="sync-status" class="sync-status"></div>
+    </div>
+
     <div class="tabs">
       <button class="tab-btn active" data-tab="shopping" type="button">Market Listesi</button>
       <button class="tab-btn" data-tab="pantry" type="button">Evdekiler</button>
